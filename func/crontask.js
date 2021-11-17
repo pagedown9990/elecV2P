@@ -1,7 +1,5 @@
 const cron = require('node-cron')
-
-const { wsSer } = require('./websocket')
-const { logger } = require('../utils')
+const { logger, wsSer } = require('../utils')
 
 const clog = new logger({ head: 'crontask', cb: wsSer.send.func('tasklog') })
 
@@ -17,28 +15,37 @@ module.exports = class {
 
   start(){
     if (this.task) {
-      clog.log(`start cron task ${this.task.name}, time: ${this.task.time}`)
+      clog.log(`start cron task: ${this.task.name}, time: ${this.task.time}`)
       
       this.job = cron.schedule(this.task.time, this.job)
       this.task.running = true
+      wsSer.send({ type: 'task', data: { tid: this.task.id, op: 'start' }})
     } else {
       clog.error('no taskinfo')
     }
   }
 
-  stop(){
-    if (this.job) this.job.stop()
+  stop(flag = 'stopped'){
+    if (this.job) {
+      this.job.stop()
+    }
     if (this.task) {
-      clog.log(this.task.name, 'stopped')
+      clog.log(this.task.name, flag)
       this.task.running = false
-      if(this.task.id) wsSer.send({type: 'task', data: {tid: this.task.id, op: 'stop'}})
+      if (this.task.id && flag !== 'restart') {
+        wsSer.send({ type: 'task', data: { tid: this.task.id, op: 'stop' }})
+      }
     }
   }
 
-  delete(){
-    if (this.job) this.job.destroy()
+  delete(flag = 'delete'){
+    if (this.job) {
+      this.job.destroy()
+    }
     if (this.task) {
-      clog.log("delete cron task:", this.task.name)
+      if (flag !== 'stop') {
+        clog.log(flag, "cron task:", this.task.name)
+      }
       delete this.task
     }
   }

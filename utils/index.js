@@ -1,9 +1,12 @@
-const { now, wait } = require('./time')
+const { eproxy } = require('./eproxy')
+const { isAuthReq } = require('./validate')
+const { now, wait, waituntil } = require('./time')
 const { logger, setGlog, LOGFILE } = require('./logger')
-const { list, jsfile, store, file } = require('./file')
-const { eAxios, downloadfile, CONFIG_Axios } = require('./eaxios')
-const { euid, sJson, sString, bEmpty, sUrl, sType, errStack, nStatus, UUID, iRandom, escapeHtml } = require('./string')
-const { CONFIG_FEED, feedAddItem, iftttPush, barkPush, schanPush, feedPush, feedXml, feedClear } = require('./feed')
+const { list, Jsfile, store, file } = require('./file')
+const { websocketSer, wsSer, message } = require('./websocket')
+const { eAxios, axProxy, stream, downloadfile, CONFIG_Axios, checkupdate } = require('./eaxios')
+const { euid, sJson, sString, strJoin, bEmpty, sUrl, sType, sBool, errStack, kSize, nStatus, UUID, iRandom, escapeHtml, surlName, progressBar, btoa, atob, sbufBody } = require('./string')
+const { CONFIG_FEED, feedAddItem, iftttPush, barkPush, custPush, feedPush, feedXml, feedClear } = require('./feed')
 
 const clog = new logger({ head: 'elecV2Proc', file: 'elecV2Proc' })
 
@@ -27,10 +30,12 @@ process
 })
 
 module.exports = {
-  now, wait,
-  eAxios, CONFIG_Axios,
+  eproxy, isAuthReq,
+  now, wait, waituntil,
   logger, setGlog, LOGFILE,
-  list, jsfile, store, file, downloadfile,
-  euid, sJson, sString, bEmpty, sUrl, sType, errStack, nStatus, UUID, iRandom, escapeHtml,
-  CONFIG_FEED, feedAddItem, iftttPush, barkPush, schanPush, feedPush, feedXml, feedClear
+  list, Jsfile, store, file,
+  websocketSer, wsSer, message,
+  eAxios, axProxy, stream, downloadfile, CONFIG_Axios, checkupdate,
+  euid, sJson, sString, strJoin, bEmpty, sUrl, sType, sBool, errStack, kSize, nStatus, UUID, iRandom, escapeHtml, surlName, progressBar, btoa, atob, sbufBody,
+  CONFIG_FEED, feedAddItem, iftttPush, barkPush, custPush, feedPush, feedXml, feedClear
 }

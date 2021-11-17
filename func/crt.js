@@ -1,27 +1,32 @@
 const fs = require('fs')
+const os = require('os')
 const path = require('path')
 const forge = require('node-forge')
 const EasyCert = require('node-easy-cert')
 
-const anycrtpath = require('os').homedir() + '/.anyproxy/certificates'
+const anycrtpath = path.join(os.homedir(), '.anyproxy/certificates')
+const rootCApath = path.join(__dirname, '../rootCA')
 
-const rootCApath = path.join(__dirname, "../rootCA")
-if(!fs.existsSync(rootCApath)) fs.mkdirSync(rootCApath)
+if(!fs.existsSync(anycrtpath)) {
+  fs.mkdirSync(anycrtpath, { recursive: true })
+}
+if(!fs.existsSync(rootCApath)) {
+  fs.mkdirSync(rootCApath, { recursive: true })
+}
 
-const { logger } = require('../utils/')
-const clog = new logger({ head: 'crtFunc' })
+const { logger, errStack, now } = require('../utils')
+const clog = new logger({ head: 'funcCrt' })
 
 /**
  * 自签根证书生成
  * @param     {object}      evoptions    {commonName, overwrite}
- * @param     {Function}    cb           callback
  * @return    {none}                   
  */
-function newRootCrt(evoptions, cb) {
+function newRootCrt(evoptions={}) {
   if (!evoptions.commonName) {
-    clog.error('no commonName')
-    if (cb) cb('no commonName')
-    return false
+    evoptions.commonName = 'elecV2P'
+  } else {
+    evoptions.commonName = encodeURI(evoptions.commonName)
   }
   const options = {
     rootDirPath: rootCApath,
@@ -36,45 +41,62 @@ function newRootCrt(evoptions, cb) {
 
   const easyCert = new EasyCert(options)
 
-  easyCert.generateRootCA(evoptions, (error, keyPath, crtPath) => {
-    if (error) {
-      clog.error(error)
-    } else {
-      clog.notify('new rootCA generated at', keyPath)
-      const password = evoptions.password || 'elecV2P'
-      const p12b64 = pemToP12(keyPath, crtPath, password)
-      fs.writeFileSync(path.join(rootCApath, 'p12b64.txt'), `password = ${password}\np12base64 = ${p12b64}`, 'utf8')
-    }
-    if(cb) cb(error, keyPath, crtPath)
+  return new Promise((resolve, reject)=>{
+    easyCert.generateRootCA(evoptions, (error, keyPath, crtPath) => {
+      if (error) {
+        reject(error)
+        clog.error(error)
+      } else {
+        resolve({ keyPath, crtPath })
+        clog.notify('new rootCA generated at', crtPath)
+        const password = evoptions.password || 'elecV2P'
+        const p12b64 = pemToP12(keyPath, crtPath, password)
+        fs.writeFile(path.join(rootCApath, 'p12b64.txt'), `password = ${password}\np12base64 = ${p12b64}`, 'utf8', err=>{
+          if (err) {
+            clog.error('fail to generate p12 crt', errStack(err))
+          }
+        })
+      }
+    })
   })
 }
 
 function clearCrt() {
   // 清空所有证书（除了 rootCA）
-  clog.notify('start to clear certificates.(except rootCA)')
+  clog.notify('start to clear certificates(except rootCA)')
   fs.readdir(anycrtpath, (err, files) => {
-    if (err) clog.error(err)
+    if (err) {
+      clog.error(errStack(err))
+    }
 
     for (const file of files) {
       if (/^rootCA/.test(file)) continue
       fs.unlink(path.join(anycrtpath, file), err => {
-        if (err) clog.error(err)
-        else clog.notify("delete crt file", file)
+        if (err) {
+          clog.error(errStack(err))
+        } else {
+          clog.notify('delete certificates', file)
+        }
       })
     }
   })
 }
 
-function rootCrtSync() {
+async function rootCrtSync() {
   // 同步用户根证书和系统根证书
-  if (fs.existsSync(path.join(rootCApath, "rootCA.crt")) && fs.existsSync(path.join(rootCApath, "rootCA.key"))) {
-    clog.notify('启用 rootCA 文件夹下根证书')
-    fs.copyFileSync(rootCApath + "/rootCA.crt", anycrtpath + "/rootCA.crt")
-    fs.copyFileSync(rootCApath + "/rootCA.key", anycrtpath + "/rootCA.key")
-    return true
+  let rcrt = path.join(rootCApath, 'rootCA.crt'),
+      rkey = path.join(rootCApath, 'rootCA.key')
+  if (!(fs.existsSync(rcrt) && fs.existsSync(rkey))) {
+    try {
+      await newRootCrt()
+    } catch(e) {
+      throw(e)
+    }
   }
-  clog.info('rootCA 目录下无根证书，将自动生成新的证书')
-  return false
+  clog.info('move rootCA.crt/rootCA.key to', anycrtpath)
+  fs.copyFileSync(rcrt, anycrtpath + '/rootCA.crt')
+  fs.copyFileSync(rkey, anycrtpath + '/rootCA.key')
+  return true
 }
 
 function pemToP12(keyPath, crtPath, password='elecV2P') {
@@ -90,4 +112,33 @@ function pemToP12(keyPath, crtPath, password='elecV2P') {
   return p12b64
 }
 
-module.exports = { clearCrt, rootCrtSync, newRootCrt }
+function cacheClear() {
+  try {
+    fs.rmSync(path.join(os.tmpdir(), 'anyproxy/cache'), { recursive: true, force: true })
+    return true
+  } catch(e) {
+    clog.error('fail to clear anyproxy temp cache', errStack(e))
+    return false
+  }
+}
+
+function crtInfo(){
+  let crtPath = path.join(anycrtpath, 'rootCA.crt')
+  if (!fs.existsSync(crtPath)) {
+    return {
+      rescode: -1,
+      message: crtPath + ' not exist'
+    }
+  }
+  let crt = fs.readFileSync(crtPath)
+  let pubcrt = forge.pki.certificateFromPem(crt.toString())
+
+  return {
+    rescode: 0,
+    commonName: pubcrt.subject.getField('CN').value,
+    notBefore: now(pubcrt.validity.notBefore, false),
+    notAfter: now(pubcrt.validity.notAfter, false)
+  }
+}
+
+module.exports = { clearCrt, rootCrtSync, newRootCrt, cacheClear, crtInfo }

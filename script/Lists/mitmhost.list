@@ -1,2 +1,16 @@
-[mitmhost]
-httpbin.org
+{
+  "mitmhost": {
+    "note": "elecV2P mitmhost list",
+    "list": [
+      {
+        "host": "*",
+        "enable": false,
+        "note": "解析所有域名"
+      },
+      {
+        "host": "httpbin.org",
+        "enable": true
+      }
+    ]
+  }
+}

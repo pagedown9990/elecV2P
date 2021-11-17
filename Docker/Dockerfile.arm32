@@ -1,17 +1,14 @@
-FROM node:alpine as builder
-
-COPY package.json /usr/local/app/package.json
-WORKDIR /usr/local/app
-
-RUN yarn install --prod
-
 FROM arm32v7/node:alpine
 
 ADD ./ /usr/local/app
+COPY ./Docker/qemu-arm-static /usr/bin
 WORKDIR /usr/local/app
+RUN apk add --update --no-cache tzdata \
+    && chmod -R 777 /usr/local/app \
+    && yarn install --prod --network-timeout 300000
 
-COPY --from=builder /usr/local/app/node_modules /usr/local/app/node_modules
+ENV PATH /usr/local/app/node_modules/.bin:$PATH
 
 EXPOSE 80 8001 8002
 
-CMD ["node", "index.js"]
+CMD ["pm2-runtime", "index.js", "-n", "elecV2P"]

@@ -1,11 +1,13 @@
 const fs = require('fs')
 const path = require('path')
+const { format } = require('util')
 const { now } = require('./time')
-const { sString, bEmpty } = require('./string')
+const { sString } = require('./string')
 
 const { CONFIG } = require('../config')
 
 const CONFIG_LOG = {
+  logspath: path.join(__dirname, '../logs'),
   levels: {
     error: 0,
     notify: 1,
@@ -16,11 +18,9 @@ const CONFIG_LOG = {
   globalLevel: CONFIG.gloglevel || 'info'
 }
 
-CONFIG_LOG.logspath = function(){
-  const logFolder = path.join(__dirname, '../logs')
-  if(!fs.existsSync(logFolder)) fs.mkdirSync(logFolder)
-  return logFolder
-}();
+if(!fs.existsSync(CONFIG_LOG.logspath)) {
+  fs.mkdirSync(CONFIG_LOG.logspath)
+}
 
 class logger {
   _head = 'elecV2P'
@@ -28,10 +28,11 @@ class logger {
 
   log = this.info
   err = this.error
+  warn = this.notify
 
   constructor({ head, level, isalignHead, cb, file }) {
     if(head) this._head = head
-    if(CONFIG_LOG.levels.hasOwnProperty(level)) this._level = level
+    if(level && CONFIG_LOG.levels.hasOwnProperty(level)) this._level = level
     if(cb) this._cb = cb
     if(file) this._file = /\.log/.test(file) ? file : file + '.log'
 
@@ -53,9 +54,9 @@ class logger {
   }
 
   info(){
-    const args = formArgs(arguments)
+    const args = formArgs(...arguments)
     if (!args) return
-    const cont = `[${ this.infohead }][${ now() }]: ${ args }`
+    const cont = `[${ this.infohead }][${ now() }] ${ args }`
     if (CONFIG_LOG.levels[this._level] >= CONFIG_LOG.levels['info'] && CONFIG_LOG.levels['info'] <= CONFIG_LOG.levels[CONFIG_LOG.globalLevel]) {
       console.log(cont)
     }
@@ -64,9 +65,9 @@ class logger {
   }
 
   notify(){
-    const args = formArgs(arguments)
+    const args = formArgs(...arguments)
     if (!args) return
-    const cont = `[${ this.notifyhead }][${ now() }]: ${ args }`
+    const cont = `[${ this.notifyhead }][${ now() }] ${ args }`
     if (CONFIG_LOG.levels[this._level] >= CONFIG_LOG.levels['notify'] && CONFIG_LOG.levels['notify'] <= CONFIG_LOG.levels[CONFIG_LOG.globalLevel]) {
       console.log(cont)
     }
@@ -75,9 +76,9 @@ class logger {
   }
 
   error(){
-    const args = formArgs(arguments)
+    const args = formArgs(...arguments)
     if (!args) return
-    const cont = `[${ this.errorhead }][${ now() }]: ${ args }`
+    const cont = `[${ this.errorhead }][${ now() }] ${ args }`
     if (CONFIG_LOG.levels[this._level] >= CONFIG_LOG.levels['error'] && CONFIG_LOG.levels['error'] <= CONFIG_LOG.levels[CONFIG_LOG.globalLevel]) {
       console.error(cont)
     }
@@ -87,92 +88,221 @@ class logger {
   }
 
   debug(){
-    const args = formArgs(arguments)
-    if (!args) return
     if (CONFIG_LOG.levels[this._level] >= CONFIG_LOG.levels['debug'] && CONFIG_LOG.levels['debug'] <= CONFIG_LOG.levels[CONFIG_LOG.globalLevel]) {
-      const cont = `[${ this.debughead }][${ now() }]: ${ args }`
+      const args = formArgs(...arguments)
+      if (!args) return
+      const cont = `[${ this.debughead }][${ now() }] ${ args }`
       console.log(cont)
       if(this._cb) this._cb(cont)
       if(this._file) LOGFILE.put(this._file, cont)
     }
+  }
+
+  clear(){
+    let cont = null
+    if(this._file && LOGFILE.delete(this._file)) {
+      cont = `[${ this.infohead }][${ now() }] ${ this._file } was cleared`
+    } else {
+      cont = `[${ this.infohead }][${ now() }] no log file to clear`
+    }
+    console.log(cont)
+    if(this._cb) this._cb(cont)
+  }
+
+  ctime = {}
+  time(label = 'default') {
+    if (this.ctime[label]) {
+      this.info('timer ' + label + ' already exists')
+      return
+    }
+    this.ctime[label] = process.hrtime()
+    this.info(`start a console timer: ${label}`)
+  }
+  timeLog(label = 'default', ...args) {
+    if (!this.ctime[label]) {
+      this.info('timer ' + label + ' does not exist')
+      return
+    }
+    let diff = process.hrtime(this.ctime[label])
+    this.info(`${label}: ${ (diff[0]*1e9 + diff[1]) / 1e6 }ms ${ formArgs.apply(this, args) }`)
+  }
+  timeEnd(label = 'default') {
+    if (!this.ctime[label]) {
+      this.info('timer ' + label + ' does not exist')
+      return
+    }
+    let diff = process.hrtime(this.ctime[label])
+    this.info(`timer ${label} end: ${ (diff[0]*1e9 + diff[1]) / 1e6 }ms`)
   }
 }
 
 const clog = new logger({ head: 'logger', level: 'debug' })
 
 const LOGFILE = {
-  put(filename, data){
-    if (!filename || !data) return
-    filename = filename.trim()
-    fs.appendFile(path.join(CONFIG_LOG.logspath, filename.split(/\/|\\/).join('-')), sString(data) + '\n', (err) => {
-      if (err) clog.error(err)
-    })
+  streamList: {},
+  statusList: {},
+  filethList: {},
+  filepath(name){
+    if (!this.filethList[name]) {
+      this.filethList[name] = path.join(CONFIG_LOG.logspath, name.trim().replace(/\/|\\/g, '-'))
+    }
+    return this.filethList[name]
+  },
+  streamFile(name, opclose = false){
+    if (opclose) {
+      if (this.streamList[name]) {
+        this.streamList[name].end()
+      }
+      return
+    }
+    if (!this.streamList[name]) {
+      let filename = this.filepath(name)
+      this.streamList[name] = fs.createWriteStream(filename, { flags: 'a' })
+      this.statusList[name] = {
+        interval: setInterval(()=>{
+          if (this.statusList[name].toclose) {
+            this.streamList[name].end()
+          } else {
+            this.statusList[name].toclose = true
+          }
+        }, 5000),
+        toclose: true
+      }
+      clog.debug('stream', filename, 'created')
+      this.streamList[name].on('close', ()=>{
+        clearInterval(this.statusList[name].interval)
+        clog.debug(filename + ' stream closed')
+        delete this.streamList[name]
+        delete this.statusList[name]
+        delete this.filethList[name]
+      })
+      this.streamList[name].on('error', ()=>{
+        clearInterval(this.statusList[name].interval)
+        clog.debug(filename + ' stream error')
+        delete this.streamList[name]
+        delete this.statusList[name]
+        delete this.filethList[name]
+      })
+    }
+    this.statusList[name].toclose = false
+    return this.streamList[name]
+  },
+  put(filename, data, head = ''){
+    if (!filename || data === undefined || data === '') {
+      return
+    }
+    this.streamFile(filename).write((head ? `[${ alignHead(head) }][${ now() }] ` : '') + sString(data) + '\n')
   },
   get(filename){
-    if (!filename) return
+    if (!filename) {
+      return
+    }
     filename = filename.trim()
     if (filename === 'all') {
-      return fs.readdirSync(CONFIG_LOG.logspath)
+      return require('./file.js').file.list({ folder: CONFIG_LOG.logspath, ext: ['.log'] })
     }
-    filename = filename.split(/\/|\\/).join('-')
     let logfpath = path.join(CONFIG_LOG.logspath, filename)
     if (fs.existsSync(logfpath)) {
-      return fs.readFileSync(logfpath, "utf8")
+      if (fs.statSync(logfpath).isDirectory()) {
+        return require('./file.js').file.list({ folder: logfpath, ext: ['.log'] })
+      }
+      return fs.createReadStream(logfpath)
     }
-    clog.info(filename, 'not exist yet')
+    clog.info(filename, 'not exist')
   },
   delete(filename){
     if (!filename) return
     filename = filename.trim()
     if (filename == 'all') {
-      fs.readdirSync(CONFIG_LOG.logspath).forEach(file=>{
+      require('./file.js').file.list({ folder: CONFIG_LOG.logspath, ext: ['.log'] }).forEach(file=>{
         clog.notify('delete log file:', file)
         fs.unlinkSync(path.join(CONFIG_LOG.logspath, file))
+        this.streamFile(filename, true)
       })
       return true
     }
     if (fs.existsSync(path.join(CONFIG_LOG.logspath, filename))){
-      clog.notify('delete log file', filename)
+      clog.notify('delete log file:', filename)
       fs.unlinkSync(path.join(CONFIG_LOG.logspath, filename))
+      this.streamFile(filename, true)
       return true
     } 
     return false
   }
 }
 
-function formArgs(args) {
-  try {
-    args = [...args]
-    if (args.length) {
-      return args.filter(arg=>!bEmpty(arg)).map(arg=>sString(arg).trim()).join(' ')
+function formArgs() {
+  for (let i=0; i<arguments.length; i++) {
+    if (typeof arguments[i] === 'string' && !/^\r|\r$/.test(arguments[i])) {
+      arguments[i] = arguments[i].trim()
     }
-    return ''
-  } catch(e) {
-    clog.error('wrong arguments')
-    return 'there are some errors in logs arguments'
   }
+  return format(...arguments)
 }
 
-function alignHead(head) {
-  if (head.length === CONFIG_LOG.alignHeadlen) return head
-  if (head.length < CONFIG_LOG.alignHeadlen) {
-    let nstr = head.split(' ')
-    let space = CONFIG_LOG.alignHeadlen - head.length
-    while(space--){
-      nstr[0] += ' '
+function alignHead(str, alignlen = CONFIG_LOG.alignHeadlen) {
+  let buf = Buffer.from(str), tlen = (buf.length + str.length) / 2
+  if (tlen === alignlen) {
+    return str
+  }
+  if (tlen < alignlen) {
+    let nstr = str.split(' '), lastr = nstr.pop()
+    lastr = ' '.repeat(alignlen - tlen) + lastr
+    return nstr.join(' ') + ' ' + lastr
+  }
+  const sp = str.split(/\/|\\/)
+  if (sp.length > 1) {
+    str = sp[0].slice(0,1) + '/' + sp.pop()
+    buf = Buffer.from(str)
+    tlen = (buf.length + str.length) / 2
+    if (tlen === alignlen) {
+      return str
     }
-    return nstr.join(' ')
+    if (tlen < alignlen) {
+      let nstr = str.split(' '), lastr = nstr.pop()
+      lastr = ' '.repeat(alignlen - tlen) + lastr
+      return nstr.join(' ') + ' ' + lastr
+    }
   }
-  if (head.length > CONFIG_LOG.alignHeadlen) {
-    const sp = head.split(/\/|\\/)
-    if (sp.length > 1) head = sp[0].slice(0,1) + path.sep + sp.pop()
-    const nstr = head.split(' ').pop()
-    return head.slice(0, CONFIG_LOG.alignHeadlen-6-nstr.length) + '...' + head.slice(-nstr.length-3)
+  let lsidx = buf.lastIndexOf(' '), lres
+  let isZh  = (buf, idx)=>(buf[idx] >= 228 && (buf[idx+1] >= 128 && buf[idx+1] <=191) && (buf[idx+2] >= 128 && buf[idx+2] <=191))
+  if (isZh(buf, lsidx - 4)) {
+    lres = buf.slice(lsidx - 1)
+  } else if (isZh(buf, lsidx - 3)) {
+    lres = buf.slice(lsidx - 3)
+    alignlen++
+  } else {
+    lres = buf.slice(lsidx - 2)
   }
+  alignlen = alignlen - lres.length - 3
+  tlen = 0
+  let end = 0
+  while (end <= buf.length) {
+    if (isZh(buf, end)) {
+      if (alignlen - tlen >= 2) {
+        end += 3
+        tlen += 2
+      } else {
+        break
+      }
+    } else {
+      end++
+      tlen++
+    }
+    if (tlen >= alignlen) {
+      break
+    }
+  }
+
+  let res = buf.slice(0, end).toString()
+  if (tlen < alignlen) {
+    res += ' '.repeat(alignlen - tlen)
+  }
+  return res + '...' + lres.toString()
 }
 
 function setGlog(level) {
-  if(CONFIG_LOG.levels.hasOwnProperty(level)) {
+  if (CONFIG_LOG.levels.hasOwnProperty(level)) {
     CONFIG_LOG.globalLevel = level
     clog.notify('global loglevel set to', level)
   } else {

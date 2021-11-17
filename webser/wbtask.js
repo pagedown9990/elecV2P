@@ -1,69 +1,51 @@
-const { Task, TASKS_WORKER, TASKS_INFO, jobFunc } = require('../func/task')
+const { taskMa } = require('../func/task')
 
-const { logger, list, sType } = require('../utils')
+const { logger, sString } = require('../utils')
 const clog = new logger({ head: 'wbtask' })
 
 module.exports = app => {
-  app.get("/task", (req, res)=>{
-    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), `get task lists`)
-    res.end(JSON.stringify(TASKS_INFO))
+  app.get('/task', (req, res)=>{
+    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), 'get task lists')
+    res.json(taskMa.info())
   })
 
-  app.put("/task", (req, res)=>{
-    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), req.body.op, `task`)
+  app.put('/task', (req, res)=>{
+    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), req.body.op, 'task')
     let data = req.body.data
-    if (!data.tid) {
-      clog.info('modify task fail! parameter tid is not present.')
-      res.end('modify task fail!')
-      return
-    }
     switch(req.body.op){
-      case "start":
-        if (!data.task || sType(data.task) !== 'object') {
-          clog.error('start task error, unknow task info:', data.task)
-          res.end('start task error.')
-          return
-        }
-        if (TASKS_WORKER[data.tid]) {
-          clog.info('delete task old data')
-          if (TASKS_WORKER[data.tid].stat()) TASKS_WORKER[data.tid].stop()
-          TASKS_WORKER[data.tid].delete()
-        }
-
-        TASKS_INFO[data.tid] = data.task
-        TASKS_INFO[data.tid].id = data.tid
-        TASKS_WORKER[data.tid] = new Task(TASKS_INFO[data.tid], jobFunc(data.task.job))
-        TASKS_WORKER[data.tid].start()
-        res.end('task: ' + data.task.name + ' started!')
+      case 'add':
+        res.json(taskMa.add(data.task, { type: data.type || 'replace' }))
         break
-      case "stop":
-        if(TASKS_WORKER[data.tid]) {
-          TASKS_WORKER[data.tid].stop()
-          res.end("task stopped!")
-        } else {
-          res.end("no such task")
-        }
+      case 'start':
+        res.json(taskMa.add(data.task))
         break
-      case "delete":
-        if(TASKS_WORKER[data.tid]) {
-          TASKS_WORKER[data.tid].delete()
-          delete TASKS_INFO[data.tid]
-        }
-        res.end("task deleted!")
+      case 'stop':
+        res.json(taskMa.stop(data.tid))
+        break
+      case 'delete':
+        res.json(taskMa.delete(data.tid))
+        break
+      case 'test':
+        Promise.race([
+          taskMa.test(data.task),
+          new Promise(resolve=>setTimeout(resolve, 5000, { rescode: 0, message: 'task still running...' }))
+        ]).then(tres=>{
+          res.send(sString(tres))
+        }).catch(e=>{
+          res.send(sString(e.message || e))
+        })
         break
       default:{
-        res.end("task operation error")
+        res.status(405).json({
+          rescode: 405,
+          message: 'unknow task operation ' + req.body.op
+        })
       }
     }
   })
 
-  app.post("/task", (req, res)=>{
-    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), `save task list`)
-    if (sType(req.body) === 'object' && list.put('task.list', req.body)) {
-      res.end('task list success saved!')
-    } else {
-      clog.error('fail to save', req.body, 'to task.list')
-      res.end('fail to save task list.')
-    }
+  app.post('/task', (req, res)=>{
+    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), 'save task list')
+    res.json(taskMa.save(req.body))
   })
 }

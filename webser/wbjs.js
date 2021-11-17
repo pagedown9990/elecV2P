@@ -1,156 +1,194 @@
 const formidable = require('formidable')
 
-const { wsSer } = require('../func/websocket')
-
-const { logger, downloadfile, eAxios, errStack, sString, sType, jsfile, file } = require('../utils')
+const { logger, downloadfile, eAxios, errStack, sType, Jsfile, file, wsSer, sbufBody, surlName } = require('../utils')
 const clog = new logger({ head: 'wbjsfile', cb: wsSer.send.func('jsmanage') })
 
-const { runJSFile, JSLISTS, CONFIG_RUNJS } = require('../script')
+const { runJSFile } = require('../script')
 
 module.exports = app => {
-  app.get("/jsfile", (req, res)=>{
-    const jsfn = req.query.jsfn
-    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "get js file", jsfn)
-    if (/\.\./.test(jsfn)) {
-      res.end('illegal request about ' + jsfn)
-      return
+  app.get('/jsfile', (req, res)=>{
+    let jsfn = req.query.jsfn
+    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), 'get js file', jsfn)
+    if (!jsfn || /\.\./.test(jsfn)) {
+      return res.json({
+        rescode: -1,
+        message: 'illegal request to get js file ' + jsfn
+      })
     }
-    const jscont = jsfile.get(jsfn)
+    let jscont = Jsfile.get(jsfn)
     if (jscont) {
-      res.end(jscont)
+      res.send(jscont)
     } else {
-      res.writeHead(404, { 'Content-Type': 'text/plain;charset=utf-8' })
-      res.end('404 ' + jsfn + ' don\'t exist')
+      res.status(404).json({
+        rescode: 404,
+        message: jsfn + ' not exist'
+      })
     }
   })
 
-  app.get("/jsmanage", (req, res)=>{
-    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "get js manage data")
-    res.end(JSON.stringify({
-      storemanage: true,
-      jslists: Object.assign(JSLISTS, jsfile.get('list'))
-    }))
+  app.get('/jsmanage', (req, res)=>{
+    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), 'get js manage data')
+    res.json({
+      jslists: Jsfile.get('list')
+    })
   })
 
-  app.put("/runjsconfig", (req, res)=>{
-    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "put runjsconfig")
-    try {
-      Object.assign(CONFIG_RUNJS, req.body.data)
-      res.end('RUNJS config changed')
-    } catch {
-      res.end('fail to change RUNJS config')
-    }
-  })
-
-  app.put("/jsfile", (req, res)=>{
-    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "put js file")
+  app.put('/jsfile', (req, res)=>{
     const op = req.body.op
+    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), op, req.body.url)
     switch(op){
       case 'jsdownload':
-        downloadfile(req.body.url, jsfile.get(req.body.name, 'path')).then(jsl=>{
-          res.end('download js file to: ' + jsl)
-          if (JSLISTS.indexOf(req.body.name) === -1) JSLISTS.push(req.body.name)
+        downloadfile(req.body.url, {
+          name: Jsfile.get(req.body.name || surlName(req.body.url), 'path')
+        }, d=>{
+          clog.info(d.finish || d.progress + '\r')
+        }).then(jsl=>{
+          res.json({
+            rescode: 0,
+            message: 'download js file to: ' + jsl
+          })
         }).catch(e=>{
-          res.end(req.body.name + ' download error!' + errStack(e))
+          res.json({
+            rescode: -1,
+            message: `${req.body.name || ''} ${errStack(e)}`.trim()
+          })
         })
         break
       default: {
-        res.end(op + " - wrong operation on js file")
+        res.json({
+          rescode: -1,
+          message: op + ' - wrong operation on js file'
+        })
         break
       }
     }
   })
 
-  app.post("/jsfile", (req, res)=>{
+  app.post('/jsfile', (req, res)=>{
     let jsname = req.body.jsname
     let jscontent = req.body.jscontent
-    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "post js file", jsname)
+    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), 'post', jsname, req.body.type || 'to save')
     if (!(jsname && jscontent)) {
-      res.end("have no jsname or content")
-      return
+      return res.send('a name of js and content is expect')
     }
     if (req.body.type === 'totest') {
-      const jsres = runJSFile(req.body.jscontent, { type: 'rawcode', from: jsname.split('.js')[0] + '-test.js', cb: wsSer.send.func('jsmanage') })
-      if (sType(jsres) === 'promise') {
-        jsres.then(data=>{
-          res.end(sString(data))
-        }).catch(error=>{
-          res.end('error: ' + error)
-          clog.error(errStack(error))
+      runJSFile(req.body.jscontent, {
+        type: 'rawcode',
+        filename: jsname.replace(/\.js$/, '-test.js'),
+        from: 'test',
+        cb: wsSer.send.func('jsmanage', req.body.id),
+        timeout: 5000
+      }).then(data=>{
+        res.send(sbufBody(data))
+      }).catch(error=>{
+        res.send('error: ' + error)
+        clog.error(errStack(error))
+      })
+    } else {
+      if (Jsfile.put(jsname, req.body.jscontent)) {
+        res.json({
+          rescode: 0,
+          message: `${jsname} success saved`
         })
       } else {
-        res.end(sString(jsres))
+        res.json({
+          rescode: -1,
+          message: `${jsname} fail to save`
+        })
       }
-    } else {
-      jsfile.put(jsname, req.body.jscontent)
-      clog.notify(`${jsname} success saved`)
-      res.end(`${jsname} success saved`)
-      if (JSLISTS.indexOf(jsname) === -1) JSLISTS.push(jsname)
     }
   })
 
-  app.delete("/jsfile", (req, res)=>{
+  app.delete('/jsfile', (req, res)=>{
     const jsfn = req.body.jsfn
-    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "delete js file " + jsfn)
+    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), 'delete js file ' + jsfn)
     if (jsfn) {
-      if (jsfile.delete(jsfn)) {
-        JSLISTS.splice(JSLISTS.indexOf(jsfn), 1)
-        res.end(jsfn + ' is deleted!')
+      let bDelist = Jsfile.delete(jsfn)
+      if (bDelist) {
+        if (sType(bDelist) === 'array') {
+          res.json({
+            rescode: 0,
+            message: bDelist.join(', ') + ' success deleted'
+          })
+        } else {
+          res.json({
+            rescode: 0,
+            message: jsfn + ' success deleted'
+          })
+        }
       } else {
-        res.end(jsfn + ' not existed!')
+        res.json({
+          rescode: 404,
+          message: jsfn + ' not existed'
+        })
       }
     } else {
-      clog.error('a js file name is expect!')
-      res.end('a parameter jsfn is expect.')
+      clog.error('a js file name is expect')
+      res.json({
+        rescode: -1,
+        message: 'a parameter jsfn is expect'
+      })
     }
   })
 
   app.post('/uploadjs', (req, res) => {
-    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "uploading JS file")
+    clog.info((req.headers['x-forwarded-for'] || req.connection.remoteAddress), 'uploading JS file')
     const uploadfile = new formidable.IncomingForm()
     uploadfile.maxFieldsSize = 20 * 1024 * 1024 //限制为最大20M
     uploadfile.keepExtensions = true
     uploadfile.multiples = true
     uploadfile.parse(req, (err, fields, files) => {
       if (err) {
-        clog.error('Error', errStack(err))
-        res.end('js upload fail!' + err.message)
-        return
+        clog.error('upload js Error', errStack(err))
+        return res.json({
+          rescode: -1,
+          message: 'js upload fail ' + err.message
+        })
       }
 
       if (!files.js) {
         clog.info('no js file to upload')
-        return
+        return res.json({
+          rescode: 404,
+          message: 'no js file upload'
+        })
       }
       if (files.js.length) {
         files.js.forEach(sgfile=>{
           clog.notify('upload js file:', sgfile.name)
-          file.copy(sgfile.path, jsfile.get(sgfile.name, 'path'))
-          if (JSLISTS.indexOf(sgfile.name) === -1) JSLISTS.push(sgfile.name)
+          file.copy(sgfile.path, Jsfile.get(sgfile.name, 'path'))
         })
       } else {
         clog.notify('upload js file:', files.js.name)
-        file.copy(files.js.path, jsfile.get(files.js.name, 'path'))
-        if (JSLISTS.indexOf(files.js.name) === -1) JSLISTS.push(files.js.name)
+        file.copy(files.js.path, Jsfile.get(files.js.name, 'path'))
       }
+      return res.json({
+        rescode: 0,
+        message: 'upload success'
+      })
     })
-    res.end('upload success!')
   })
 
   app.put('/mock', (req, res)=>{
     clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), 'make mock', req.body.type)
     const request = req.body.request
     switch(req.body.type){
-      case "req":
+      case 'req':
         eAxios(request).then(response=>{
           clog.notify('mock request response:', response.data)
-          res.end('success!')
+          res.json({
+            rescode: 0,
+            message: 'axios request success'
+          })
         }).catch(error=>{
-          clog.error('mock request error:', errStack(error))
-          res.end('fail! ' + error.message)
+          clog.error('mock request', errStack(error))
+          res.json({
+            rescode: -1,
+            message: 'axios request fail, ' + error.message
+          })
         })
         break
-      case "js":
+      case 'js':
         let jsname = req.body.jsname
         if (jsname) {
           if (!/\.js$/.test(jsname)) jsname = jsname + '.js'
@@ -168,13 +206,18 @@ $axios(request).then(res=>{
 }).catch(e=>{
   console.error(e)
 })`
-        jsfile.put(jsname, jscont)
-        res.end(`success save ${jsname}!`)
-        clog.notify(`success save ${jsname}!`)
-        if (JSLISTS.indexOf(jsname) === -1) JSLISTS.push(jsname)
+        Jsfile.put(jsname, jscont)
+        res.json({
+          rescode: 0,
+          message: `success save ${jsname}`
+        })
+        clog.notify(`success save ${jsname}`)
         break
       default:{
-        res.end("wrong mock type")
+        res.json({
+          rescode: -1,
+          message: 'wrong mock type'
+        })
       }
     }
   })

@@ -4,48 +4,32 @@ const express = require('express')
 const compression = require('compression')
 
 const { CONFIG, CONFIG_Port } = require('./config')
-const { websocketSer } = require('./func/websocket')
 
-const { logger } = require('./utils/logger')
+const { isAuthReq, logger, websocketSer } = require('./utils')
 const clog = new logger({ head: 'webServer' })
 
-const { wbconfig, wbfeed, wbcrt, wbjs, wbtask, wblogs, wbstore, wbdata, wblist, wbhook, wbefss } = require('./webser')
+const { wbefss, wbconfig, wbfeed, wbcrt, wbjs, wbtask, wblogs, wbstore, wbdata, wblist, wbhook, wbrpc } = require('./webser')
 
 module.exports = () => {
   const app = express()
   app.use(compression())
-  app.use(express.json({ limit: '20mb' }))
+  app.use(express.json({ limit: '10mb' }))
+  app.use(express.text({ type: 'text/*' }))
+  app.use(express.raw())
+  app.set('json spaces', 2)
 
   app.use((req, res, next)=>{
-    if (!CONFIG.SECURITY || CONFIG.SECURITY.enable === false) {
-      next()
-      return
-    }
-    if (CONFIG.wbrtoken && (req.query.token === CONFIG.wbrtoken || req.body.token === CONFIG.wbrtoken)) {
-      next()
-      return
-    }
-    const blacklist = CONFIG.SECURITY.blacklist || []
-    const whitelist = CONFIG.SECURITY.whitelist || []
-
-    let ipAddress = req.headers['x-forwarded-for'] || req.connection.remoteAddress
-    if (ipAddress.substr(0, 7) == "::ffff:") ipAddress = ipAddress.substr(7)
-    if(whitelist.indexOf(ipAddress) !== -1 || (blacklist.indexOf('*') === -1 && blacklist.indexOf(ipAddress) === -1)) {
+    if (isAuthReq(req, res)) {
       next()
     } else {
-      clog.error(ipAddress, 'is try to access sever.')
-      res.send('don\'t allow to access.')
+      res.status(403).send(`<p>You have no permission to access.</p><p>IP: ${req.headers['x-forwarded-for'] || req.connection.remoteAddress} is recorded.</p><br><p>Powered BY elecV2P: <a href='https://github.com/elecV2/elecV2P'>https://github.com/elecV2/elecV2P</a></p>`)
     }
   })
 
   const ONEMONTH = 60 * 1000 * 60 * 24 * 30                // 页面缓存时间
-
   app.use(express.static(path.resolve(__dirname, 'web/dist'), { maxAge: ONEMONTH }))
 
-  if (CONFIG.efss) {
-    wbefss(app)
-  }
-
+  wbrpc(app)
   wbconfig(app)
   wbfeed(app)
   wbcrt(app)
@@ -56,18 +40,22 @@ module.exports = () => {
   wbdata(app)
   wblist(app)
   wbhook(app)
+  wbefss(app)
 
   app.use((req, res, next) => {
-    res.writeHead(200, { 'Content-Type': 'text/html;charset=utf-8' })
-    res.end(`404<br>当前访问地址不存在<br><br><a href="/">返回首页</a><br><br><br><a target="_blank" href="https://github.com/elecV2/elecV2P">elecV2P 项目主页</a>`)
+    res.status(404).send(`<p>404</p><br><a href="/">BACK TO HOME</a><br><p><span>Powered BY</span><a target="_blank" href="https://github.com/elecV2/elecV2P">elecV2P</a></p>`)
   })
 
   const server = http.createServer(app)
 
+  server.on('clientError', (err, socket) => {
+    socket.end('HTTP/1.1 400 Bad Request\r\n')
+  })
+
   const webstPort = process.env.PORT || CONFIG_Port.webst || 80
 
   server.listen(webstPort, ()=>{
-    clog.notify("elecV2P", CONFIG.version, "on port", webstPort)
+    clog.notify('elecV2P', 'v' + CONFIG.version, 'started on port', webstPort)
   })
 
   websocketSer({ server, path: '/elecV2P' })

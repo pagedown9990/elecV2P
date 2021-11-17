@@ -7,26 +7,112 @@
 - 后面偶尔修修 Bug，欢迎提交 Issue
 - Porject 的坑有时间再填
 - Thanks for using.
-- [ ] @grant silent/nologfile
 </pre>
 </div>
 <div style="background-color: #003153;margin-top: 12px;border-radius: 8px;">
 <h3 style="font-size: 24px;text-align: center;border-bottom: 1px solid;color: white;padding: 6px;margin-bottom: 0;">Project</h3>
 <pre style="margin-bottom: 0;white-space: pre-line;word-break: break-word;margin: 0;padding: 6px 1em;text-align: left;display: flex;">
-- 说明文档 [1.0 基本完成，优化中...]
-- download process(cb)
-- EFSS 删除文件/文件管理模块
-- Lists 注释保存/单条标记(dirty)上传
-- Backup 备份导出/导入 (lists/store)
-- minishell 上传/下载文件（编辑?）
-- 文件编辑器（component || libery)
+- 多 token 授权及对应权限管理
+- TASK 定时任务分组/排序
+- favend JS 重构（可直接运行的类 vue 模型（ES6?
 - 多语言 [一个可能永远不填的坑..., start ready...]
+- elecV2P 启动器/快捷方式（$run JSON 格式文件
+- eFlow: 不同语言的脚本执行流程可视化控制（天坑）
 </pre>
 </div>
 </div>
 <div style="width: 50%;background-color: #2d8800;border-radius: 8px;margin: 0 12px; max-height: 480px; overflow: hidden auto;">
 <h3 style="font-size: 24px;text-align: center;border-bottom: 1px solid;color: white;padding: 6px;margin-bottom: 0;">Done</h3>
 <pre style="margin-bottom: 0;white-space: pre-line;word-break: break-word;margin: 0;padding: 6px 1em;text-align: left;display: flex;">
+- [x] 首次 token 访问时生成 cookie
+- [x] REWRITE 备份及订阅分组
+- [x] RULES/REWRITE 规则总开关
+- [x] REWRITE/MITM 规则匹配缓存
+- [x] webUI 与后台版本一致性检测
+- [x] TASK 部分远程 JS 更新
+- [x] 当前连接客户端信息简易记录
+- [X] EFSS 文件压缩/解压/重命名
+- [x] $download options existskip
+- [x] 远程推送 JS 时可重命名文件
+- [x] access.log 更详细记录
+- [x] 增加对 Buffer 类数据的处理
+- [x] webhook 打开/关闭代理端口
+- [x] EFSS 多文件操作
+- [x] softupdate.js 异步并行下载
+- [x] favend favorite 显示日期和大小
+- [X] EFSS 新增文本文件编辑器
+- [x] 添加 access.log 访问日志
+- [x] weboskcet token 验证
+- [x] 增加 $store.set 方法
+- [x] EFSS 右键新建文件夹
+- [x] EFSS 复制粘粘移动文件
+- [x] github action 自动构建多平台 docker 镜像
+- [x] table overflow 显示优化
+- [x] runJS 增加 -grant 参数处理
+- [x] 增加临时环境变量 $env
+- [x] 通知触发 JS 优化
+- [x] JS 增加 sudo 模式及 $task
+- [x] 增加默认变量__taskname/__taskid
+- [x] require 相关函数优化
+- [x] logs 界面删除按钮
+- [x] 部分对象 Proxy 化
+- [x] EFSS 右键增加 pm2 运行选项
+- [x] JS 默认环境变量增加 $cache
+- [X] EFSS favorite&backend
+- [x] TASK 批量删除/添加/暂停/开始
+- [x] logs 支持多级目录
+- [x] exec 远程指令优化及默认目录调整
+- [x] EFSS 支持删除文件夹
+- [x] JS 列表只返回 .js 结尾文件
+- [x] exec -env/-timeout 参数处理优化
+- [x] node 指令默认 cwd 修改为 script/JSFile
+- [x] 增加 console.time/timeLog/timeEnd
+- [x] 增加显示脚本内网络请求 url 的选项
+- [x] eAxios 网络请求增加黑/白名单模式
+- [x] @grant 增加 nodejs 兼容模式
+- [x] $message 支持点击打开 url
+- [x] $evui 增加 从后台关闭
+- [x] efss 右键显示文件地址及目录支持 $temp
+- [x] webUI 移动端显示 及 log.vue 等优化
+- [x] webUI 取消 TASK 转圈动画
+- [x] 单个 cookie 导出/导入
+- [x] webhook 增加对后台限制 IP 的更改
+- [x] webhook download 支持设置目录及文件名
+- [x] webhook 增加 jsfile 获取及添加
+- [x] REWRITE 订阅同时添加 MITMHOST 及 TASK
+- [x] REWRITE 增加 reject 类规则 (网络请求前)
+- [X] 使用 JSON 重构 Lists 数据结构
+- [X] 说明文档 [1.0 基本完成，优化中...]
+- [x] MITM list JSON 化
+- [x] 首页增加服务器相关信息显示
+- [x] 增加默认通知开关
+- [x] 定时任务本地订阅导入
+- [x] store/cookie 管理添加关联脚本及备注
+- [x] EFSS 跳过显示部分文件夹/文件
+- [x] 增加 ANYPROXY 快速关闭/打开功能
+- [x] webUI 增加 elecV2P 重启/关闭按钮
+- [x] task 远程 JS 更新，以及 ctrl+enter 测试
+- [x] eaxios 网络代理问题修复
+- [x] 本地 JS 支持多级目录
+- [x] anyproxy temp cache 关闭时自动清理
+- [x] download process(cb)
+- [x] webhook token 初始值更改为随机
+- [x] 通知触发 JS
+- [x] 通知测试按钮
+- [x] $feed title 开头使用 $enable$ 强制发送通知
+- [x] shell 指令支持执行远程文件
+- [x] $exec 增加延迟输入交互内容
+- [x] $evui 增加支持插入 script
+- [x] EFSS 目录支持使用 $HOME/~ 变量
+- [x] 添加定时任务订阅功能
+- [X] EFSS 删除文件/文件管理模块（初版完成）
+- [x] 默认启动方式更改为 PM2
+- [x] 增加在前端网页显示通知的功能
+- [x] 优化通过 token 访问 webUI（绕过 IP 屏蔽）
+- [x] 实现自定义通知
+- [x] $evui 实现基础的前后端数据交互
+- [x] $evui 通过脚本生成图形 UI
+- [x] @grant silent/quiet
 - [x] rules 301 -> 307
 - [x] runJSFile Promise 化
 - [x] bark 自定义服务器

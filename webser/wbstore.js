@@ -1,74 +1,72 @@
-const { wsSer } = require('../func/websocket')
-const { logger, store } = require('../utils')
+const { logger, store, sString, sJson, wsSer } = require('../utils')
 const clog = new logger({ head: 'wbstore', cb: wsSer.send.func('jsmanage'), lever: 'debug' })
 
 module.exports = app => {
   app.get("/store", (req, res) => {
-    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress) + " get store data", req.query.key)
-    res.writeHead(200, { 'Content-Type' : 'text/plain;charset=utf-8' })
+    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "get store data", req.query.key || 'list')
     if (req.query.key) {
-      res.end(store.get(req.query.key, 'raw'))
+      res.send(sString(store.get(req.query.key, 'raw')))
     } else {
-      res.end(JSON.stringify(store.all()))
+      res.json(store.all())
     }
   })
 
   app.put("/store", (req, res) => {
     let data = req.body.data
     if (data === undefined) {
-      res.end('no put data!')
-      return
+      return res.json({
+        rescode: -1,
+        message: 'a data is expect'
+      })
     }
-    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress) 
-      + " put store " + req.body.type)
+    clog.notify((req.headers['x-forwarded-for'] || req.connection.remoteAddress), "put store", req.body.type, data.key || data)
     switch (req.body.type) {
       case "get":
-        res.end(store.get(data))
+        res.send(store.get(data))
         break
       case "save":
         if (data.key === undefined || data.value === undefined) {
-          res.end('no key or value')
+          return res.json({
+            rescode: -1,
+            message: 'a key and value is expect'
+          })
+        }
+        let value = data.value.value
+        delete data.value.value
+        let options = data.value
+        if (store.put(value, data.key, options)) {
+          clog.debug(`save ${ data.key } value:`, value, 'from wbstore')
+          res.json({
+            rescode: 0,
+            message: data.key + ' saved'
+          })
         } else {
-          const key = data.key
-          const value = data.value
-          let finalval = ''
-          try {
-            switch (value.type) {
-              case 'number':
-                finalval = Number(value.value)
-                break
-              case 'boolean':
-                finalval = Boolean(value.value)
-                break
-              case 'array':
-              case 'object':
-                finalval = JSON.parse(value.value)
-                break
-              default:{
-                finalval = value.value === undefined ? value : value.value
-                if (typeof finalval === 'object') finalval = JSON.stringify(finalval)
-              }
-            }
-            store.put(finalval, key, value.type)
-            clog.debug(`save ${ data.key } value: `, finalval)
-            res.end(data.key + ' saved')
-          } catch(e) {
-            clog.error(e.stack)
-            res.end('fail to save, ' + e.message)
-          }
+          res.json({
+            rescode: -1,
+            message: data.key + ' fail to save. maybe data length is over limit'
+          })
         }
         break
       case "delete":
         if (store.delete(data)) {
           clog.notify(data, 'deleted')
-          res.end(data + ' deleted')
+          res.json({
+            rescode: 0,
+            message: data + ' deleted'
+          })
         } else {
-          clog.error('delete fail!', e)
-          res.end('delete fail' + e.message)
+          clog.error('delete fail')
+          res.json({
+            rescode: -1,
+            message: 'delete fail'
+          })
         }
         break
       default:{
-        break
+        res.json({
+          rescode: -1,
+          message: 'unexpect type ' + req.body.type
+        })
       }
     }
   })

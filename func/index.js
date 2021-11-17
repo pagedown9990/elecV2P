@@ -1,4 +1,5 @@
-const task = require('./task')
-const crt = require('./crt')
+const { taskMa } = require('./task')
+const { exec, sysInfo } = require('./exec')
+const { clearCrt, rootCrtSync, newRootCrt, cacheClear, crtInfo } = require('./crt')
 
-module.exports = { ...task, ...crt}
+module.exports = { taskMa, clearCrt, rootCrtSync, newRootCrt, cacheClear, crtInfo, exec, sysInfo }

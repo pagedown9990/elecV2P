@@ -3,9 +3,13 @@
 function execP(command, env={}) {
   return new Promise((resolve, reject)=>{
     $exec(command, {
-      cwd: './script/Shell', env,
-      cb(data, error){
-        error ? reject(error) : resolve(data)
+      cwd: './script/Shell', env, call: true,
+      cb(data, error, finish){
+        if (finish) {
+          console.log(command, 'finished.')
+          resolve(data)
+        }
+        error ? reject(error) : console.log(data)
       }
     })
   })
@@ -13,12 +17,13 @@ function execP(command, env={}) {
 
 const data = 'hello'
 
-$result = new Promise((resolve, reject)=>{
+new Promise((resolve, reject)=>{
   execP('sh data.sh', { data }).then(res=>{
     console.log('shell result:', res)
     execP(`python data.py ${ encodeURI(res) }`).then(res=>{
       console.log('python result:', res)
       resolve(res)
+      $done(res)
     }).catch(e=>reject(e))
   }).catch(e=>{
     reject(e)
